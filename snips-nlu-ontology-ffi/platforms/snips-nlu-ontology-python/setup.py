@@ -49,7 +49,8 @@ with io.open(README, "rt", encoding="utf8") as f:
     readme = f.read()
 
 required = [
-    "future==0.16.0"
+    "future==0.16.0",
+    "ujson==1.35"
 ]
 
 setup(name=PACKAGE_NAME,

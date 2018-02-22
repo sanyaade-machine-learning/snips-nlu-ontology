@@ -1,15 +1,13 @@
-use std::ffi::{CStr, CString};
-use std::slice;
-use std::sync::Arc;
-use std::str::FromStr;
-
+use builtin_entity::{CBuiltinEntity, CBuiltinEntityArray, CFullBuiltinEntity, CLightBuiltinEntity};
+use errors::*;
+use ffi_utils::{CResult, CStringArray, destroy};
 use libc;
 use serde_json;
-
-use errors::*;
-use ffi_utils::{destroy, CResult, CStringArray};
 use snips_nlu_ontology::BuiltinEntityParser;
-use builtin_entity::{CBuiltinEntity, CBuiltinEntityArray};
+use std::ffi::{CStr, CString};
+use std::slice;
+use std::str::FromStr;
+use std::sync::Arc;
 
 #[repr(C)]
 pub struct CBuiltinEntityParser {
@@ -45,7 +43,17 @@ pub extern "C" fn nlu_ontology_extract_entities(
     ptr: *const CBuiltinEntityParser,
     sentence: *const libc::c_char,
     filter_entity_kinds: *const CStringArray,
-    results: *mut *const CBuiltinEntityArray,
+    results: *mut *const CBuiltinEntityArray<CFullBuiltinEntity>,
+) -> CResult {
+    wrap!(extract_entity_c(ptr, sentence, filter_entity_kinds, results))
+}
+
+#[no_mangle]
+pub extern "C" fn nlu_ontology_extract_light_entities(
+    ptr: *const CBuiltinEntityParser,
+    sentence: *const libc::c_char,
+    filter_entity_kinds: *const CStringArray,
+    results: *mut *const CBuiltinEntityArray<CLightBuiltinEntity>,
 ) -> CResult {
     wrap!(extract_entity_c(ptr, sentence, filter_entity_kinds, results))
 }
@@ -61,8 +69,15 @@ pub extern "C" fn nlu_ontology_extract_entities_json(
 }
 
 #[no_mangle]
-pub extern "C" fn nlu_ontology_destroy_builtin_entity_array(
-    ptr: *mut CBuiltinEntityArray,
+pub extern "C" fn nlu_ontology_destroy_light_builtin_entity_array(
+    ptr: *mut CBuiltinEntityArray<CLightBuiltinEntity>,
+) -> CResult {
+    wrap!(destroy(ptr))
+}
+
+#[no_mangle]
+pub extern "C" fn nlu_ontology_destroy_full_builtin_entity_array(
+    ptr: *mut CBuiltinEntityArray<CFullBuiltinEntity>,
 ) -> CResult {
     wrap!(destroy(ptr))
 }
@@ -95,17 +110,17 @@ fn create_builtin_entity_parser(
     Ok(())
 }
 
-fn extract_entity_c(
+fn extract_entity_c<T: CBuiltinEntity + Sized>(
     ptr: *const CBuiltinEntityParser,
     sentence: *const libc::c_char,
     filter_entity_kinds: *const CStringArray,
-    results: *mut *const CBuiltinEntityArray,
+    results: *mut *const CBuiltinEntityArray<T>,
 ) -> OntologyResult<()> {
     let c_entities = extract_entity(ptr, sentence, filter_entity_kinds)?
         .into_iter()
-        .map(CBuiltinEntity::from)
-        .collect::<Vec<CBuiltinEntity>>();
-    let c_entities = Box::new(CBuiltinEntityArray::from(c_entities));
+        .map(T::from)
+        .collect::<Vec<T>>();
+    let c_entities = Box::new(CBuiltinEntityArray::<T>::from(c_entities));
 
     unsafe { *results = Box::into_raw(c_entities); }
 

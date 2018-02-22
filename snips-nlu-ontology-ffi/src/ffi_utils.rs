@@ -1,12 +1,11 @@
 #![allow(non_camel_case_types)]
 
-use std::sync::Mutex;
+use builtin_entity::{CBuiltinEntityArray, CLightBuiltinEntity};
+use errors::*;
+use libc;
 use std::ffi::CString;
 use std::slice;
-
-use libc;
-
-use errors::*;
+use std::sync::Mutex;
 
 lazy_static! {
     pub static ref LAST_ERROR: Mutex<String> = Mutex::new("".to_string());
@@ -77,12 +76,18 @@ pub extern "C" fn nlu_ontology_get_last_error(error: *mut *const libc::c_char) -
 
 #[no_mangle]
 pub extern "C" fn nlu_ontology_destroy_string_array(ptr: *mut CStringArray) -> CResult {
-   wrap!(destroy(ptr))
+    wrap!(destroy(ptr))
 }
 
 #[no_mangle]
 pub extern "C" fn nlu_ontology_destroy_string(ptr: *mut libc::c_char) -> CResult {
     wrap!(destroy_string(ptr))
+}
+
+#[no_mangle]
+pub extern "C" fn nlu_ontology_destroy_builtin_light_entity_array(
+    ptr: *mut CBuiltinEntityArray<CLightBuiltinEntity>) -> CResult {
+    wrap!(destroy(ptr))
 }
 
 fn get_last_error(error: *mut *const libc::c_char) -> OntologyResult<()> {

@@ -4,13 +4,13 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import json
-from _ctypes import pointer, byref
-from builtins import object, range, str
-from ctypes import c_char_p, c_void_p, c_int, string_at
+from _ctypes import pointer, byref, POINTER
+from ctypes import c_char_p, c_void_p, c_int
 
+from builtins import object, range, str
 from snips_nlu_ontology.utils import (
-    string_array_pointer, string_pointer, CStringArray, lib)
+    string_array_pointer, C_STRING_ARRAY, lib,
+    LIGTH_BUILTIN_ENTITY_ARRAY, builtin_entity_light_array)
 
 _ALL_LANGUAGES = None
 _SUPPORTED_ENTITIES = dict()
@@ -31,7 +31,7 @@ def get_all_languages():
     """Lists all the supported languages"""
     global _ALL_LANGUAGES
     if _ALL_LANGUAGES is None:
-        lib.nlu_ontology_supported_languages.restype = CStringArray
+        lib.nlu_ontology_supported_languages.restype = C_STRING_ARRAY
         array = lib.nlu_ontology_supported_languages()
         _ALL_LANGUAGES = set(
             array.data[i].decode("utf8") for i in range(array.size))
@@ -43,7 +43,7 @@ def get_all_builtin_entities():
     language"""
     global _ALL_BUILTIN_ENTITIES
     if _ALL_BUILTIN_ENTITIES is None:
-        lib.nlu_ontology_all_builtin_entities.restype = CStringArray
+        lib.nlu_ontology_all_builtin_entities.restype = C_STRING_ARRAY
         array = lib.nlu_ontology_all_builtin_entities()
         _ALL_BUILTIN_ENTITIES = set(
             array.data[i].decode("utf8") for i in range(array.size))
@@ -63,15 +63,14 @@ def get_supported_entities(language):
                         % type(language))
 
     if language not in _SUPPORTED_ENTITIES:
-        with string_array_pointer(pointer(CStringArray())) as ptr:
+        with string_array_pointer(pointer(C_STRING_ARRAY())) as ptr:
             exit_code = lib.nlu_ontology_supported_builtin_entities(
                 language.encode("utf8"), byref(ptr))
             if exit_code:
                 raise ValueError("Something wrong happened while retrieving "
                                  "supported entities. See stderr.")
-            array = ptr.contents
-            _SUPPORTED_ENTITIES[language] = set(
-                array.data[i].decode("utf8") for i in range(array.size))
+            _SUPPORTED_ENTITIES[language] = set(ptr.contents.to_dict())
+
     return _SUPPORTED_ENTITIES[language]
 
 
@@ -119,16 +118,16 @@ class BuiltinEntityParser(object):
                 raise TypeError(
                     "Expected scope to contain objects of type 'str'")
             scope = [e.encode("utf8") for e in scope]
-            arr = CStringArray()
+            arr = C_STRING_ARRAY()
             arr.size = c_int(len(scope))
             arr.data = (c_char_p * len(scope))(*scope)
             scope = byref(arr)
 
-        with string_pointer(c_char_p()) as ptr:
-            exit_code = lib.nlu_ontology_extract_entities_json(
+        array_pointer = POINTER(LIGTH_BUILTIN_ENTITY_ARRAY)()
+        with builtin_entity_light_array(array_pointer) as ptr:
+            exit_code = lib.nlu_ontology_extract_light_entities(
                 self._parser, text.encode("utf8"), scope, byref(ptr))
             if exit_code:
-                raise ValueError("Something wrong happened while extracting "
-                                 "builtin entities. See stderr.")
-            result = string_at(ptr)
-            return json.loads(result.decode("utf8"))
+                raise RuntimeError("Something wrong happened while extracting "
+                                   "built in entities. See stderr.")
+            return ptr.contents.to_dict()

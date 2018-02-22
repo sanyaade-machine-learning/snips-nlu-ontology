@@ -1,19 +1,22 @@
 #![allow(non_camel_case_types)]
 
+use errors::*;
+use ffi_utils::{CResult, CStringArray};
+use libc;
+use serde_json;
+use snips_nlu_ontology::{BuiltinEntityKind, Language};
 use std::convert::From;
 use std::ffi::{CStr, CString};
 use std::slice;
 use std::str::FromStr;
 
-use libc;
-
-use errors::*;
-use ffi_utils::{CResult, CStringArray};
-use snips_nlu_ontology::{BuiltinEntityKind, Language};
+pub trait CBuiltinEntity: From<::BuiltinEntity> {
+    fn drop(&mut self);
+}
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct CBuiltinEntity {
+pub struct CFullBuiltinEntity {
     pub entity: ::CSlotValue,
     pub entity_kind: *const libc::c_char,
     pub value: *const libc::c_char,
@@ -21,8 +24,15 @@ pub struct CBuiltinEntity {
     pub range_end: libc::int32_t,
 }
 
-impl From<::BuiltinEntity> for CBuiltinEntity {
-    fn from(e: ::BuiltinEntity) -> CBuiltinEntity {
+impl CBuiltinEntity for CFullBuiltinEntity {
+    fn drop(&mut self) {
+        let _ = unsafe { CString::from_raw(self.value as *mut libc::c_char) };
+        let _ = unsafe { CString::from_raw(self.entity_kind as *mut libc::c_char) };
+    }
+}
+
+impl From<::BuiltinEntity> for CFullBuiltinEntity {
+    fn from(e: ::BuiltinEntity) -> CFullBuiltinEntity {
         Self {
             entity: ::CSlotValue::from(e.entity),
             entity_kind: CString::new(e.entity_kind.identifier()).unwrap().into_raw(),
@@ -33,34 +43,57 @@ impl From<::BuiltinEntity> for CBuiltinEntity {
     }
 }
 
-impl Drop for CBuiltinEntity {
+#[repr(C)]
+#[derive(Debug)]
+pub struct CLightBuiltinEntity {
+    pub entity: *const libc::c_char,
+    pub entity_kind: *const libc::c_char,
+    pub value: *const libc::c_char,
+    pub range_start: libc::int32_t,
+    pub range_end: libc::int32_t,
+}
+
+impl CBuiltinEntity for CLightBuiltinEntity {
     fn drop(&mut self) {
         let _ = unsafe { CString::from_raw(self.value as *mut libc::c_char) };
+        let _ = unsafe { CString::from_raw(self.entity as *mut libc::c_char) };
         let _ = unsafe { CString::from_raw(self.entity_kind as *mut libc::c_char) };
+    }
+}
+
+impl From<::BuiltinEntity> for CLightBuiltinEntity {
+    fn from(e: ::BuiltinEntity) -> CLightBuiltinEntity {
+        Self {
+            entity: CString::new(serde_json::to_string(&e.entity).unwrap()).unwrap().into_raw(),
+            entity_kind: CString::new(e.entity_kind.identifier()).unwrap().into_raw(),
+            value: CString::new(e.value).unwrap().into_raw(), // String can not contains 0
+            range_start: e.range.start as libc::int32_t,
+            range_end: e.range.end as libc::int32_t,
+        }
     }
 }
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct CBuiltinEntityArray {
-    pub data: *const CBuiltinEntity,
+pub struct CBuiltinEntityArray<T> {
+    pub data: *const T,
     pub size: libc::int32_t, // Note: we can't use `libc::size_t` because it's not supported by JNA
 }
 
-impl CBuiltinEntityArray {
-    pub fn from(input: Vec<CBuiltinEntity>) -> Self {
+impl<T> CBuiltinEntityArray<T> {
+    pub fn from(input: Vec<T>) -> Self {
         Self {
             size: input.len() as libc::int32_t,
-            data: Box::into_raw(input.into_boxed_slice()) as *const CBuiltinEntity,
+            data: Box::into_raw(input.into_boxed_slice()) as *const T,
         }
     }
 }
 
-impl Drop for CBuiltinEntityArray {
+impl<T> Drop for CBuiltinEntityArray<T> {
     fn drop(&mut self) {
         let _ = unsafe {
             Box::from_raw(slice::from_raw_parts_mut(
-                self.data as *mut CBuiltinEntityArray,
+                self.data as *mut T,
                 self.size as usize,
             ))
         };

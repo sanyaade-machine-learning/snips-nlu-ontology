@@ -29,6 +29,7 @@ pub use ffi_utils::{
     nlu_ontology_destroy_string_array,
     nlu_ontology_destroy_string,
     nlu_ontology_get_last_error,
+    nlu_ontology_destroy_builtin_light_entity_array,
     CStringArray
 };
 
