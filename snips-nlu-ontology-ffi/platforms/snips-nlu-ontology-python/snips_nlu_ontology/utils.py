@@ -74,4 +74,3 @@ class LIGTH_BUILTIN_ENTITY_ARRAY(Structure):
 
     def to_dict(self):
         return [self.data[i].to_dict() for i in range(self.size)]
-g
